@@ -21,8 +21,21 @@ export default function Search() {
   useEffect(() => {
     if (debouncedQuery && debouncedQuery.length >= 2) {
       search()
+    } else {
+      fetchTrending()
     }
   }, [debouncedQuery, type])
+
+  useEffect(() => {
+    const currentType = searchParams.get('type') || 'all'
+    if (currentType !== type) {
+      setType(currentType)
+    }
+    
+    if (!searchParams.get('q')) {
+      fetchTrending()
+    }
+  }, [])
 
   useEffect(() => {
     if (debouncedQuery && debouncedQuery.length >= 2) {
@@ -54,6 +67,20 @@ export default function Search() {
       setSuggestions(response.data.data)
     } catch (error) {
       console.error('Error fetching suggestions:', error)
+    }
+  }
+
+  const fetchTrending = async () => {
+    setIsLoading(true)
+    try {
+      const response = await api.get('/search/trending', {
+        params: { type }
+      })
+      setResults(response.data.data)
+    } catch (error) {
+      toast.error('خطأ في جلب المحتوى الرائج')
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -164,7 +191,14 @@ export default function Search() {
           {typeOptions.map((option) => (
             <button
               key={option.value}
-              onClick={() => setType(option.value)}
+              onClick={() => {
+                setType(option.value)
+                if (query.trim()) {
+                  setSearchParams({ q: query, type: option.value })
+                } else {
+                  setSearchParams({ type: option.value })
+                }
+              }}
               className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
                 type === option.value
                   ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-600'

@@ -157,7 +157,7 @@ export default function CreateCommunity() {
             <label className="label">نوع المجتمع</label>
             <div className="grid grid-cols-3 gap-3">
               {[
-                { value: 'public', label: 'عام', desc: '任何人都可以查看和加入' },
+                { value: 'public', label: 'عام', desc: 'الجميع يمكنه المشاهدة والانضمام' },
                 { value: 'restricted', label: 'مقيد', desc: 'الجميع يمكنه المشاهدة، فقط المعتمدون يمكنهم النشر' },
                 { value: 'private', label: 'خاص', desc: 'فقط الأعضاء يمكنهم المشاهدة والنشر' }
               ].map((type) => (

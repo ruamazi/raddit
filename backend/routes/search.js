@@ -142,4 +142,49 @@ router.get('/suggestions', async (req, res) => {
   }
 });
 
+router.get('/trending', async (req, res) => {
+  try {
+    const { type = 'all', limit = 20 } = req.query;
+    
+    let results = {
+      posts: [],
+      communities: [],
+      users: []
+    };
+
+    if (type === 'all' || type === 'communities') {
+      results.communities = await Community.find({ isBanned: false })
+        .sort({ memberCount: -1 })
+        .limit(parseInt(limit))
+        .select('name displayName icon memberCount');
+    }
+
+    if (type === 'all' || type === 'users') {
+      results.users = await User.find({ isBanned: false })
+        .sort({ karma: -1 })
+        .limit(parseInt(limit))
+        .select('username displayName avatar karma');
+    }
+
+    if (type === 'all' || type === 'posts') {
+      results.posts = await Post.find({ isRemoved: false })
+        .populate('author', 'username avatar displayName')
+        .populate('community', 'name displayName icon')
+        .sort({ hotScore: -1 })
+        .limit(parseInt(limit));
+    }
+
+    res.json({
+      success: true,
+      data: results
+    });
+  } catch (error) {
+    console.error('Trending error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'خطأ في جلب المحتوى الرائج'
+    });
+  }
+});
+
 export default router;

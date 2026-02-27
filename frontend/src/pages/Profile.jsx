@@ -13,16 +13,25 @@ import {
   HiUserAdd,
   HiUserRemove,
   HiOutlineChat,
-  HiOutlineCog
+  HiOutlineCog,
+  HiOutlineEyeOff,
+  HiOutlineEye,
+  HiOutlineUserGroup
 } from 'react-icons/hi'
 import toast from 'react-hot-toast'
+import { useCommunitiesStore } from '../stores/communitiesStore'
 
 export default function Profile() {
   const { username } = useParams()
   const { user: currentUser, isAuthenticated } = useAuthStore()
+  const { toggleUserHideCommunity } = useCommunitiesStore()
   const [profile, setProfile] = useState(null)
   const [posts, setPosts] = useState([])
   const [comments, setComments] = useState([])
+  const [communities, setCommunities] = useState([])
+  const [hiddenCommunityIds, setHiddenCommunityIds] = useState([])
+  const [hiddenCommunities, setHiddenCommunities] = useState([])
+  const [showHiddenCommunities, setShowHiddenCommunities] = useState(false)
   const [activeTab, setActiveTab] = useState('posts')
   const [isLoading, setIsLoading] = useState(true)
   const [isFollowing, setIsFollowing] = useState(false)
@@ -40,6 +49,8 @@ export default function Profile() {
       setProfile(response.data.data.user)
       setPosts(response.data.data.posts)
       setComments(response.data.data.comments)
+      setCommunities(response.data.data.communities || [])
+      setHiddenCommunityIds(response.data.data.hiddenCommunityIds || [])
       setIsFollowing(response.data.data.isFollowing)
     } catch (error) {
       toast.error('خطأ في جلب الملف الشخصي')
@@ -57,9 +68,34 @@ export default function Profile() {
     try {
       await api.post(`/users/follow/${profile._id}`)
       setIsFollowing(!isFollowing)
-      toast.success(isFollowing ? 'تم إلغاء المتابعة' : 'تم المتابعة')
+      toast.success(isFollowing ? 'تم إلغاء المتابعة' : 'تم المتاقبة')
     } catch (error) {
       toast.error(error.response?.data?.message || 'خطأ في المتابعة')
+    }
+  }
+
+  const handleHideCommunity = async (communityName) => {
+    try {
+      const isHidden = await toggleUserHideCommunity(communityName)
+      if (isHidden) {
+        setCommunities(communities.filter(c => c.name !== communityName))
+        setHiddenCommunityIds([...hiddenCommunityIds])
+        fetchHiddenCommunities()
+      } else {
+        fetchProfile()
+      }
+      toast.success(isHidden ? 'تم إخفاء المجتمع' : 'تم إظهار المجتمع')
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'خطأ')
+    }
+  }
+
+  const fetchHiddenCommunities = async () => {
+    try {
+      const response = await api.get('/users/hidden-communities')
+      setHiddenCommunities(response.data.data || [])
+    } catch (error) {
+      console.error('Error fetching hidden communities:', error)
     }
   }
 
@@ -209,6 +245,16 @@ export default function Profile() {
         >
           التعليقات
         </button>
+        <button
+          onClick={() => setActiveTab('communities')}
+          className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+            activeTab === 'communities'
+              ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-600'
+              : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
+          }`}
+        >
+          المجتمعات
+        </button>
       </div>
 
       {activeTab === 'posts' ? (
@@ -223,7 +269,7 @@ export default function Profile() {
             <p className="text-gray-500">لا توجد منشورات</p>
           </div>
         )
-      ) : (
+      ) : activeTab === 'comments' ? (
         comments.length > 0 ? (
           <div className="space-y-4">
             {comments.map((comment) => (
@@ -248,6 +294,117 @@ export default function Profile() {
             <p className="text-gray-500">لا توجد تعليقات</p>
           </div>
         )
+      ) : (
+        communities.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {communities.map((community) => (
+              <Link
+                key={community._id}
+                to={`/c/${community.name}`}
+                className="card p-4 flex items-center gap-4"
+              >
+                {community.icon ? (
+                  <img src={community.icon} alt="" className="w-12 h-12 rounded-full" />
+                ) : (
+                  <div className="w-12 h-12 rounded-full bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center text-primary-600 font-bold">
+                    {community.displayName[0]}
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-gray-900 dark:text-gray-100 truncate">
+                    {community.displayName}
+                  </div>
+                  <div className="text-sm text-gray-500">
+                    {community.memberCount} عضو
+                  </div>
+                </div>
+                {isOwner && (
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault()
+                      handleHideCommunity(community.name)
+                    }}
+                    className="p-2 text-gray-400 hover:text-red-500"
+                    title="إخفاء المجتمع"
+                  >
+                    <HiOutlineEyeOff className="w-5 h-5" />
+                  </button>
+                )}
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <div className="card p-8 text-center">
+            <HiOutlineUserGroup className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+            <p className="text-gray-500">لا توجد مجتمعات</p>
+          </div>
+        )
+      )}
+
+      {activeTab === 'communities' && isOwner && (
+        <div className="mt-4">
+          {!showHiddenCommunities ? (
+            <button
+              onClick={() => {
+                fetchHiddenCommunities()
+                setShowHiddenCommunities(true)
+              }}
+              className="text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+            >
+              عرض المجتمعات المخفية ({hiddenCommunityIds.length})
+            </button>
+          ) : (
+            <div className="card p-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-medium text-gray-900 dark:text-gray-100">
+                  المجتمعات المخفية
+                </h3>
+                <button
+                  onClick={() => setShowHiddenCommunities(false)}
+                  className="text-sm text-gray-500"
+                >
+                  إخفاء
+                </button>
+              </div>
+              {hiddenCommunities.length > 0 ? (
+                <div className="space-y-2">
+                  {hiddenCommunities.map((community) => (
+                    <div
+                      key={community._id}
+                      className="flex items-center gap-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-xl"
+                    >
+                      {community.icon ? (
+                        <img src={community.icon} alt="" className="w-10 h-10 rounded-full" />
+                      ) : (
+                        <div className="w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center text-primary-600 font-bold">
+                          {community.displayName[0]}
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-gray-900 dark:text-gray-100 truncate">
+                          {community.displayName}
+                        </div>
+                        <div className="text-sm text-gray-500">
+                          {community.memberCount} عضو
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleHideCommunity(community.name)}
+                        className="text-sm text-primary-600 hover:text-primary-700"
+                      >
+                        إظهار
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500 text-center py-4">
+                  لا توجد مجتمعات مخفية
+                </p>
+              )}
+            </div>
+          )}
+        </div>
       )}
 
       <Modal

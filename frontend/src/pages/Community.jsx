@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useCommunitiesStore } from '../stores/communitiesStore'
 import { usePostsStore } from '../stores/postsStore'
 import { useAuthStore } from '../stores/authStore'
@@ -12,16 +12,29 @@ import {
   HiOutlineCalendar,
   HiOutlineCog,
   HiOutlinePlus,
-  HiOutlineShieldCheck
+  HiOutlineShieldCheck,
+  HiOutlinePencil,
+  HiOutlineTrash,
+  HiOutlineEyeOff,
+  HiOutlineEye,
+  HiOutlinePlusCircle,
+  HiOutlineX
 } from 'react-icons/hi'
 import toast from 'react-hot-toast'
 
 export default function Community() {
   const { name } = useParams()
-  const { currentCommunity, fetchCommunity, joinCommunity, isLoading: communityLoading } = useCommunitiesStore()
+  const navigate = useNavigate()
+  const { currentCommunity, fetchCommunity, joinCommunity, updateCommunity, deleteCommunity, hideCommunity, isLoading: communityLoading } = useCommunitiesStore()
   const { posts, fetchPosts, isLoading: postsLoading, hasMore, sort, setSort } = usePostsStore()
   const { user, isAuthenticated } = useAuthStore()
   const [showRules, setShowRules] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
+  const [editingSection, setEditingSection] = useState(null)
+  const [description, setDescription] = useState('')
+  const [rules, setRules] = useState([])
+  const [newRule, setNewRule] = useState({ title: '', description: '' })
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     fetchCommunity(name)
@@ -66,6 +79,67 @@ export default function Community() {
   const community = currentCommunity.community
   const isMember = currentCommunity.isMember
   const isModerator = currentCommunity.isModerator
+  const isOwner = community.creator?._id === user?._id || community.creator === user?._id
+
+  const handleSaveDescription = async () => {
+    setSaving(true)
+    try {
+      await updateCommunity(name, { description })
+      toast.success('تم تحديث الوصف')
+      setEditingSection(null)
+      fetchCommunity(name)
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'خطأ في التحديث')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleSaveRules = async () => {
+    setSaving(true)
+    try {
+      await updateCommunity(name, { rules })
+      toast.success('تم تحديث القواعد')
+      setEditingSection(null)
+      fetchCommunity(name)
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'خطأ في التحديث')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleAddRule = () => {
+    if (newRule.title.trim()) {
+      setRules([...rules, { ...newRule, order: rules.length }])
+      setNewRule({ title: '', description: '' })
+    }
+  }
+
+  const handleRemoveRule = (index) => {
+    setRules(rules.filter((_, i) => i !== index))
+  }
+
+  const handleDelete = async () => {
+    if (window.confirm('هل أنت متأكد من حذف هذا المجتمع؟ لا يمكن التراجع عن هذا الإجراء.')) {
+      try {
+        await deleteCommunity(name)
+        toast.success('تم حذف المجتمع')
+        navigate('/')
+      } catch (error) {
+        toast.error(error.response?.data?.message || 'خطأ في الحذف')
+      }
+    }
+  }
+
+  const handleToggleHide = async () => {
+    try {
+      const isBanned = await hideCommunity(name)
+      toast.success(isBanned ? 'تم إخفاء المجتمع' : 'تم إظهار المجتمع')
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'خطأ')
+    }
+  }
 
   return (
     <div>
@@ -106,12 +180,16 @@ export default function Community() {
                 
                 <div className="flex gap-2">
                   {isModerator && (
-                    <Link 
-                      to={`/c/${community.name}/settings`}
+                    <button 
+                      onClick={() => {
+                        setDescription(community.description || '')
+                        setRules(community.rules || [])
+                        setShowSettings(true)
+                      }}
                       className="btn btn-ghost"
                     >
                       <HiOutlineCog className="w-5 h-5" />
-                    </Link>
+                    </button>
                   )}
                   
                   {isAuthenticated ? (
@@ -313,6 +391,162 @@ export default function Community() {
             </li>
           ))}
         </ol>
+      </Modal>
+
+      <Modal
+        isOpen={showSettings}
+        onClose={() => {
+          setShowSettings(false)
+          setEditingSection(null)
+        }}
+        title="إعدادات المجتمع"
+        size="lg"
+      >
+        <div className="space-y-6">
+          <div className="flex gap-2 border-b border-gray-200 dark:border-gray-700 pb-2">
+            <button
+              onClick={() => setEditingSection('about')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium ${
+                editingSection === 'about'
+                  ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-600'
+                  : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+              }`}
+            >
+              عن المجتمع
+            </button>
+            <button
+              onClick={() => setEditingSection('rules')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium ${
+                editingSection === 'rules'
+                  ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-600'
+                  : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+              }`}
+            >
+              القواعد
+            </button>
+          </div>
+
+          {editingSection === 'about' && (
+            <div>
+              <label className="block text-sm font-medium mb-2">وصف المجتمع</label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="input h-32"
+                placeholder="اكتب وصف المجتمع..."
+              />
+              <div className="flex justify-end mt-4">
+                <button
+                  onClick={handleSaveDescription}
+                  disabled={saving}
+                  className="btn btn-primary"
+                >
+                  {saving ? 'جاري الحفظ...' : 'حفظ'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {editingSection === 'rules' && (
+            <div>
+              <div className="space-y-3 mb-4">
+                {rules.map((rule, index) => (
+                  <div key={index} className="flex items-start gap-2 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                    <div className="flex-1">
+                      <div className="font-medium">{rule.title}</div>
+                      {rule.description && (
+                        <div className="text-sm text-gray-500">{rule.description}</div>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => handleRemoveRule(index)}
+                      className="text-red-500 hover:text-red-600"
+                    >
+                      <HiOutlineX className="w-5 h-5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2 mb-4">
+                <input
+                  type="text"
+                  value={newRule.title}
+                  onChange={(e) => setNewRule({ ...newRule, title: e.target.value })}
+                  className="input flex-1"
+                  placeholder="عنوان القاعدة..."
+                />
+                <input
+                  type="text"
+                  value={newRule.description}
+                  onChange={(e) => setNewRule({ ...newRule, description: e.target.value })}
+                  className="input flex-1"
+                  placeholder="وصف القاعدة (اختياري)..."
+                />
+                <button
+                  onClick={handleAddRule}
+                  className="btn btn-secondary"
+                >
+                  <HiOutlinePlusCircle className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="flex justify-end">
+                <button
+                  onClick={handleSaveRules}
+                  disabled={saving}
+                  className="btn btn-primary"
+                >
+                  {saving ? 'جاري الحفظ...' : 'حفظ القواعد'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {!editingSection && (
+            <div className="space-y-3">
+              <button
+                onClick={() => setEditingSection('about')}
+                className="w-full card p-4 flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-800"
+              >
+                <HiOutlinePencil className="w-5 h-5 text-primary-600" />
+                <span>تعديل وصف المجتمع</span>
+              </button>
+              <button
+                onClick={() => setEditingSection('rules')}
+                className="w-full card p-4 flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-800"
+              >
+                <HiOutlineShieldCheck className="w-5 h-5 text-primary-600" />
+                <span>إدارة القواعد</span>
+              </button>
+              {isModerator && (
+                <button
+                  onClick={handleToggleHide}
+                  className="w-full card p-4 flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-800"
+                >
+                  {community.isBanned ? (
+                    <>
+                      <HiOutlineEye className="w-5 h-5 text-green-600" />
+                      <span>إظهار المجتمع</span>
+                    </>
+                  ) : (
+                    <>
+                      <HiOutlineEyeOff className="w-5 h-5 text-yellow-600" />
+                      <span>إخفاء المجتمع</span>
+                    </>
+                  )}
+                </button>
+              )}
+              {isOwner && (
+                <button
+                  onClick={handleDelete}
+                  className="w-full card p-4 flex items-center gap-3 hover:bg-red-50 dark:hover:bg-red-900/20"
+                >
+                  <HiOutlineTrash className="w-5 h-5 text-red-600" />
+                  <span className="text-red-600">حذف المجتمع</span>
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </Modal>
     </div>
   )

@@ -83,6 +83,31 @@ router.get('/profile/:username', optionalAuth, async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(20);
 
+    let communities = [];
+    let hiddenCommunityIds = [];
+    
+    if (isOwner) {
+      const userWithHidden = await User.findById(user._id).select('hiddenCommunities');
+      hiddenCommunityIds = userWithHidden.hiddenCommunities || [];
+      
+      communities = await Community.find({
+        $or: [
+          { members: user._id },
+          { creator: user._id }
+        ],
+        _id: { $nin: hiddenCommunityIds }
+      })
+        .select('name displayName icon memberCount isBanned')
+        .sort({ memberCount: -1 });
+    } else {
+      communities = await Community.find({
+        members: user._id,
+        isBanned: false
+      })
+        .select('name displayName icon memberCount')
+        .sort({ memberCount: -1 });
+    }
+
     let isFollowing = false;
     let isBlocked = false;
     
@@ -97,9 +122,11 @@ router.get('/profile/:username', optionalAuth, async (req, res) => {
         user,
         posts: postsWithHidden,
         comments,
+        communities,
+        hiddenCommunityIds,
         isFollowing,
         isBlocked,
-        isOwner: req.user?._id?.equals(user._id)
+        isOwner
       }
     });
   } catch (error) {
@@ -394,6 +421,26 @@ router.post('/hide/:postId', protect, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'خطأ في إخفاء المنشور'
+    });
+  }
+});
+
+router.get('/hidden-communities', protect, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).select('hiddenCommunities');
+    const communities = await Community.find({
+      _id: { $in: user.hiddenCommunities }
+    }).select('name displayName icon memberCount');
+
+    res.json({
+      success: true,
+      data: communities
+    });
+  } catch (error) {
+    console.error('Get hidden communities error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'خطأ في جلب المجتمعات المخفية'
     });
   }
 });

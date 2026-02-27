@@ -86,6 +86,29 @@ export const useCommunitiesStore = create((set, get) => ({
     return response.data.data
   },
 
+  deleteCommunity: async (name) => {
+    await api.delete(`/communities/${name}`)
+    set({ currentCommunity: null })
+  },
+
+  hideCommunity: async (name) => {
+    const response = await api.patch(`/communities/${name}/hide`)
+    const { isBanned } = response.data.data
+    
+    set((state) => ({
+      currentCommunity: state.currentCommunity
+        ? { ...state.currentCommunity, community: { ...state.currentCommunity.community, isBanned } }
+        : null
+    }))
+    
+    return isBanned
+  },
+
+  toggleUserHideCommunity: async (name) => {
+    const response = await api.post(`/communities/${name}/hide`)
+    return response.data.data.isHidden
+  },
+
   fetchUserCommunities: async () => {
     try {
       const response = await api.get('/users/communities')

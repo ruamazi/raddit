@@ -75,9 +75,8 @@ router.get('/', optionalAuth, async (req, res) => {
 
 router.get('/:name', optionalAuth, async (req, res) => {
   try {
-    const community = await Community.findOne({ 
-      name: req.params.name,
-      isBanned: false 
+    let community = await Community.findOne({ 
+      name: req.params.name
     })
       .populate('moderators.user', 'username avatar displayName')
       .populate('creator', 'username avatar displayName');
@@ -87,6 +86,19 @@ router.get('/:name', optionalAuth, async (req, res) => {
         success: false,
         message: 'المجتمع غير موجود'
       });
+    }
+
+    if (community.isBanned) {
+      const isOwner = req.user && community.creator._id.equals(req.user._id);
+      const isAdmin = req.user && req.user.isAdmin;
+      const isMod = community.isModerator(req.user?._id);
+      
+      if (!isOwner && !isAdmin && !isMod) {
+        return res.status(404).json({
+          success: false,
+          message: 'المجتمع غير موجود'
+        });
+      }
     }
 
     let isMember = false;
@@ -190,7 +202,15 @@ router.put('/:name', protect, upload.single('icon'), async (req, res) => {
 
     allowedUpdates.forEach(field => {
       if (req.body[field] !== undefined) {
-        community[field] = req.body[field];
+        if (field === 'rules' || field === 'allowedPostTypes' || field === 'postingRestrictions' || field === 'flairs' || field === 'welcomeMessage') {
+          try {
+            community[field] = typeof req.body[field] === 'string' ? JSON.parse(req.body[field]) : req.body[field];
+          } catch (e) {
+            console.error(`Error parsing ${field}:`, e);
+          }
+        } else {
+          community[field] = req.body[field];
+        }
       }
     });
 
@@ -209,6 +229,78 @@ router.put('/:name', protect, upload.single('icon'), async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'خطأ في تحديث المجتمع'
+    });
+  }
+});
+
+router.delete('/:name', protect, async (req, res) => {
+  try {
+    const community = await Community.findOne({ name: req.params.name });
+    
+    if (!community) {
+      return res.status(404).json({
+        success: false,
+        message: 'المجتمع غير موجود'
+      });
+    }
+
+    const isOwner = community.creator.equals(req.user._id);
+    const isAdmin = req.user.isAdmin;
+
+    if (!isOwner && !isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: 'ليس لديك صلاحية لحذف هذا المجتمع'
+      });
+    }
+
+    await Post.deleteMany({ community: community._id });
+    await Community.findByIdAndDelete(community._id);
+
+    res.json({
+      success: true,
+      message: 'تم حذف المجتمع بنجاح'
+    });
+  } catch (error) {
+    console.error('Delete community error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'خطأ في حذف المجتمع'
+    });
+  }
+});
+
+router.patch('/:name/hide', protect, async (req, res) => {
+  try {
+    const community = await Community.findOne({ name: req.params.name });
+    
+    if (!community) {
+      return res.status(404).json({
+        success: false,
+        message: 'المجتمع غير موجود'
+      });
+    }
+
+    if (!community.isModerator(req.user._id) && !req.user.isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: 'ليس لديك صلاحية لإخفاء هذا المجتمع'
+      });
+    }
+
+    community.isBanned = !community.isBanned;
+    await community.save();
+
+    res.json({
+      success: true,
+      data: { isBanned: community.isBanned },
+      message: community.isBanned ? 'تم إخفاء المجتمع' : 'تم إظهار المجتمع'
+    });
+  } catch (error) {
+    console.error('Hide community error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'خطأ في إخفاء المجتمع'
     });
   }
 });
@@ -255,6 +347,44 @@ router.post('/:name/join', protect, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'خطأ في الانضمام للمجتمع'
+    });
+  }
+});
+
+router.post('/:name/hide', protect, async (req, res) => {
+  try {
+    const community = await Community.findOne({ name: req.params.name });
+    
+    if (!community) {
+      return res.status(404).json({
+        success: false,
+        message: 'المجتمع غير موجود'
+      });
+    }
+
+    const user = await User.findById(req.user._id);
+    const isHidden = user.hiddenCommunities.includes(community._id);
+
+    if (isHidden) {
+      user.hiddenCommunities = user.hiddenCommunities.filter(
+        id => !id.equals(community._id)
+      );
+    } else {
+      user.hiddenCommunities.push(community._id);
+    }
+
+    await user.save();
+
+    res.json({
+      success: true,
+      data: { isHidden: !isHidden },
+      message: isHidden ? 'تم إظهار المجتمع' : 'تم إخفاء المجتمع'
+    });
+  } catch (error) {
+    console.error('Hide community error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'خطأ في إخفاء المجتمع'
     });
   }
 });
